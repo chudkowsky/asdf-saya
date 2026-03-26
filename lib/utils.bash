@@ -101,17 +101,6 @@ version_gte() {
 		{ [ "${major:-0}" -eq "${ref_major:-0}" ] && [ "${minor:-0}" -eq "${ref_minor:-0}" ] && [ "${patch:-0}" -ge "${ref_patch:-0}" ]; }
 }
 
-get_binaries_for_version() {
-	local version="$1"
-	if version_gte "$version" "0.3.1"; then
-		echo "${!SAYA_BINARIES_FULL[@]}"
-	elif version_gte "$version" "0.3.0"; then
-		echo "${!SAYA_BINARIES_NO_TEE[@]}"
-	else
-		echo "saya"
-	fi
-}
-
 download_archive() {
 	local binary_name="$1" version="$2"
 	local filename filepath url
