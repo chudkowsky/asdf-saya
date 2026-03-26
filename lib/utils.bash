@@ -7,11 +7,18 @@ GH_REPO="https://github.com/dojoengine/saya"
 TOOL_NAME="saya"
 TOOL_TEST="saya --help"
 
-# Maps release archive binary name → installed command name
-declare -A SAYA_BINARIES=(
+# Binary layout per version:
+#   < 0.3.0  — single saya binary (legacy)
+#   0.3.0    — persistent + ops
+#   >= 0.3.1 — persistent + ops + persistent-tee
+declare -A SAYA_BINARIES_FULL=(
 	["persistent"]="saya"
 	["ops"]="saya-ops"
 	["persistent-tee"]="saya-tee"
+)
+declare -A SAYA_BINARIES_NO_TEE=(
+	["persistent"]="saya"
+	["ops"]="saya-ops"
 )
 
 fail() {
@@ -89,54 +96,58 @@ get_release_filename() {
 	echo "${binary_name}_v${version}_${PLATFORM}_${ARCH}.${EXT}"
 }
 
-# Returns true if version >= 0.3.0 (split workspace releases)
-is_split_release() {
+version_gte() {
+	local version="$1" major minor patch ref_major ref_minor ref_patch
+	IFS='.' read -r major minor patch <<<"$version"
+	IFS='.' read -r ref_major ref_minor ref_patch <<<"$2"
+	[ "${major:-0}" -gt "${ref_major:-0}" ] ||
+		{ [ "${major:-0}" -eq "${ref_major:-0}" ] && [ "${minor:-0}" -gt "${ref_minor:-0}" ]; } ||
+		{ [ "${major:-0}" -eq "${ref_major:-0}" ] && [ "${minor:-0}" -eq "${ref_minor:-0}" ] && [ "${patch:-0}" -ge "${ref_patch:-0}" ]; }
+}
+
+get_binaries_for_version() {
 	local version="$1"
-	local major minor
-	major="$(echo "$version" | cut -d. -f1)"
-	minor="$(echo "$version" | cut -d. -f2)"
-	[ "$major" -gt 0 ] || { [ "$major" -eq 0 ] && [ "$minor" -ge 3 ]; }
+	if version_gte "$version" "0.3.1"; then
+		echo "${!SAYA_BINARIES_FULL[@]}"
+	elif version_gte "$version" "0.3.0"; then
+		echo "${!SAYA_BINARIES_NO_TEE[@]}"
+	else
+		echo "saya"
+	fi
+}
+
+download_archive() {
+	local binary_name="$1" version="$2"
+	local filename filepath url
+	filename="$(get_release_filename "$binary_name" "$version")"
+	filepath="$ASDF_DOWNLOAD_PATH/$filename"
+	url="$GH_REPO/releases/download/v${version}/${filename}"
+
+	echo "* Downloading $binary_name $version..."
+	curl "${curl_opts[@]}" -o "$filepath" -C - "$url" || fail "Could not download $url"
+
+	if [[ "$filename" == *.zip ]]; then
+		unzip -q "$filepath" -d "$ASDF_DOWNLOAD_PATH" || fail "Could not extract $filename"
+	else
+		tar -xzf "$filepath" -C "$ASDF_DOWNLOAD_PATH" || fail "Could not extract $filename"
+	fi
+
+	rm "$filepath"
 }
 
 download_all_releases() {
 	local version="$1"
 
-	if is_split_release "$version"; then
-		# v0.3.0+: three separate archives (persistent, ops, persistent-tee)
-		for binary_name in "${!SAYA_BINARIES[@]}"; do
-			local filename
-			filename="$(get_release_filename "$binary_name" "$version")"
-			local filepath="$ASDF_DOWNLOAD_PATH/$filename"
-			local url="$GH_REPO/releases/download/v${version}/${filename}"
-
-			echo "* Downloading $binary_name $version..."
-			curl "${curl_opts[@]}" -o "$filepath" -C - "$url" || fail "Could not download $url"
-
-			if [[ "$filename" == *.zip ]]; then
-				unzip -q "$filepath" -d "$ASDF_DOWNLOAD_PATH" || fail "Could not extract $filename"
-			else
-				tar -xzf "$filepath" -C "$ASDF_DOWNLOAD_PATH" || fail "Could not extract $filename"
-			fi
-
-			rm "$filepath"
+	if version_gte "$version" "0.3.1"; then
+		for binary_name in "${!SAYA_BINARIES_FULL[@]}"; do
+			download_archive "$binary_name" "$version"
+		done
+	elif version_gte "$version" "0.3.0"; then
+		for binary_name in "${!SAYA_BINARIES_NO_TEE[@]}"; do
+			download_archive "$binary_name" "$version"
 		done
 	else
-		# legacy: single saya_v* archive containing one saya binary
-		local filename
-		filename="$(get_release_filename "saya" "$version")"
-		local filepath="$ASDF_DOWNLOAD_PATH/$filename"
-		local url="$GH_REPO/releases/download/v${version}/${filename}"
-
-		echo "* Downloading saya $version (legacy)..."
-		curl "${curl_opts[@]}" -o "$filepath" -C - "$url" || fail "Could not download $url"
-
-		if [[ "$filename" == *.zip ]]; then
-			unzip -q "$filepath" -d "$ASDF_DOWNLOAD_PATH" || fail "Could not extract $filename"
-		else
-			tar -xzf "$filepath" -C "$ASDF_DOWNLOAD_PATH" || fail "Could not extract $filename"
-		fi
-
-		rm "$filepath"
+		download_archive "saya" "$version"
 	fi
 }
 
@@ -152,9 +163,16 @@ install_version() {
 	(
 		mkdir -p "$install_path"
 
-		if is_split_release "$version"; then
-			for binary_name in "${!SAYA_BINARIES[@]}"; do
-				local install_name="${SAYA_BINARIES[$binary_name]}"
+		if version_gte "$version" "0.3.1"; then
+			for binary_name in "${!SAYA_BINARIES_FULL[@]}"; do
+				local install_name="${SAYA_BINARIES_FULL[$binary_name]}"
+				cp "$ASDF_DOWNLOAD_PATH/$binary_name" "$install_path/$install_name" \
+					|| fail "Could not find $binary_name in download path"
+				chmod +x "$install_path/$install_name"
+			done
+		elif version_gte "$version" "0.3.0"; then
+			for binary_name in "${!SAYA_BINARIES_NO_TEE[@]}"; do
+				local install_name="${SAYA_BINARIES_NO_TEE[$binary_name]}"
 				cp "$ASDF_DOWNLOAD_PATH/$binary_name" "$install_path/$install_name" \
 					|| fail "Could not find $binary_name in download path"
 				chmod +x "$install_path/$install_name"
