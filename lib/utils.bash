@@ -8,18 +8,14 @@ TOOL_NAME="saya"
 TOOL_TEST="saya --help"
 
 # Binary layout per version:
-#   < 0.3.0  — single saya binary (legacy)
-#   0.3.0    — persistent + ops
-#   >= 0.3.1 — persistent + ops + persistent-tee
-declare -A SAYA_BINARIES_FULL=(
-	["persistent"]="saya"
-	["ops"]="saya-ops"
-	["persistent-tee"]="saya-tee"
-)
-declare -A SAYA_BINARIES_NO_TEE=(
+#   < 0.3.0  — single saya archive (legacy)
+#   0.3.0    — persistent + ops archives (renamed on install to saya, saya-ops)
+#   >= 0.3.1 — saya + saya-ops + saya-tee archives (names match, no rename needed)
+declare -A SAYA_BINARIES_030=(
 	["persistent"]="saya"
 	["ops"]="saya-ops"
 )
+SAYA_BINARIES_031=("saya" "saya-ops" "saya-tee")
 
 fail() {
 	echo -e "asdf-$TOOL_NAME: $*"
@@ -139,11 +135,11 @@ download_all_releases() {
 	local version="$1"
 
 	if version_gte "$version" "0.3.1"; then
-		for binary_name in "${!SAYA_BINARIES_FULL[@]}"; do
+		for binary_name in "${SAYA_BINARIES_031[@]}"; do
 			download_archive "$binary_name" "$version"
 		done
 	elif version_gte "$version" "0.3.0"; then
-		for binary_name in "${!SAYA_BINARIES_NO_TEE[@]}"; do
+		for binary_name in "${!SAYA_BINARIES_030[@]}"; do
 			download_archive "$binary_name" "$version"
 		done
 	else
@@ -164,15 +160,16 @@ install_version() {
 		mkdir -p "$install_path"
 
 		if version_gte "$version" "0.3.1"; then
-			for binary_name in "${!SAYA_BINARIES_FULL[@]}"; do
-				local install_name="${SAYA_BINARIES_FULL[$binary_name]}"
-				cp "$ASDF_DOWNLOAD_PATH/$binary_name" "$install_path/$install_name" \
+			# Archive names match install names — copy directly
+			for binary_name in "${SAYA_BINARIES_031[@]}"; do
+				cp "$ASDF_DOWNLOAD_PATH/$binary_name" "$install_path/$binary_name" \
 					|| fail "Could not find $binary_name in download path"
-				chmod +x "$install_path/$install_name"
+				chmod +x "$install_path/$binary_name"
 			done
 		elif version_gte "$version" "0.3.0"; then
-			for binary_name in "${!SAYA_BINARIES_NO_TEE[@]}"; do
-				local install_name="${SAYA_BINARIES_NO_TEE[$binary_name]}"
+			# Archive names differ — rename on install
+			for binary_name in "${!SAYA_BINARIES_030[@]}"; do
+				local install_name="${SAYA_BINARIES_030[$binary_name]}"
 				cp "$ASDF_DOWNLOAD_PATH/$binary_name" "$install_path/$install_name" \
 					|| fail "Could not find $binary_name in download path"
 				chmod +x "$install_path/$install_name"
