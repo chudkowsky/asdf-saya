@@ -10,19 +10,4 @@ source "${plugin_dir}/lib/utils.bash"
 
 mkdir -p "$ASDF_DOWNLOAD_PATH"
 
-# Set release file name with correct extension
-release_file="$(get_binary_name "$ASDF_INSTALL_VERSION")"
-release_file_path="$ASDF_DOWNLOAD_PATH/$release_file"
-
-# Download release file to the download directory
-download_release "$ASDF_INSTALL_VERSION" "$release_file" || fail "Could not download $release_file"
-
-# Extract contents based on file extension
-if [[ "$release_file" == *.zip ]]; then
-	unzip -q "$release_file_path" -d "$ASDF_DOWNLOAD_PATH" || fail "Could not extract $release_file"
-else
-	tar -xzf "$release_file_path" -C "$ASDF_DOWNLOAD_PATH" || fail "Could not extract $release_file"
-fi
-
-# Remove the archive file since we don't need to keep it
-rm "$release_file_path"
+download_all_releases "$ASDF_INSTALL_VERSION"

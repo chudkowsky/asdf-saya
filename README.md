@@ -38,10 +38,15 @@ asdf install saya latest
 
 # Set a version globally (on your ~/.tool-versions file)
 asdf global saya latest
-
-# Now saya commands are available
-saya --version
 ```
+
+This installs three commands:
+
+| Command | Description |
+|---------|-------------|
+| `saya` | Persistent settlement daemon (STARK proof via Atlantic, or TEE mode) |
+| `saya-ops` | Ops utilities — Piltover contract deployment and management |
+| `saya-tee` | TEE settlement daemon (AMD SEV-SNP attestation → SP1 proof) |
 
 Check [asdf](https://github.com/asdf-vm/asdf) readme for more instructions on how to
 install & manage versions.
