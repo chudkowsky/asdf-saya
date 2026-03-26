@@ -89,16 +89,45 @@ get_release_filename() {
 	echo "${binary_name}_v${version}_${PLATFORM}_${ARCH}.${EXT}"
 }
 
+# Returns true if version >= 0.3.0 (split workspace releases)
+is_split_release() {
+	local version="$1"
+	local major minor
+	major="$(echo "$version" | cut -d. -f1)"
+	minor="$(echo "$version" | cut -d. -f2)"
+	[ "$major" -gt 0 ] || { [ "$major" -eq 0 ] && [ "$minor" -ge 3 ]; }
+}
+
 download_all_releases() {
 	local version="$1"
 
-	for binary_name in "${!SAYA_BINARIES[@]}"; do
+	if is_split_release "$version"; then
+		# v0.3.0+: three separate archives (persistent, ops, persistent-tee)
+		for binary_name in "${!SAYA_BINARIES[@]}"; do
+			local filename
+			filename="$(get_release_filename "$binary_name" "$version")"
+			local filepath="$ASDF_DOWNLOAD_PATH/$filename"
+			local url="$GH_REPO/releases/download/v${version}/${filename}"
+
+			echo "* Downloading $binary_name $version..."
+			curl "${curl_opts[@]}" -o "$filepath" -C - "$url" || fail "Could not download $url"
+
+			if [[ "$filename" == *.zip ]]; then
+				unzip -q "$filepath" -d "$ASDF_DOWNLOAD_PATH" || fail "Could not extract $filename"
+			else
+				tar -xzf "$filepath" -C "$ASDF_DOWNLOAD_PATH" || fail "Could not extract $filename"
+			fi
+
+			rm "$filepath"
+		done
+	else
+		# legacy: single saya_v* archive containing one saya binary
 		local filename
-		filename="$(get_release_filename "$binary_name" "$version")"
+		filename="$(get_release_filename "saya" "$version")"
 		local filepath="$ASDF_DOWNLOAD_PATH/$filename"
 		local url="$GH_REPO/releases/download/v${version}/${filename}"
 
-		echo "* Downloading $binary_name $version..."
+		echo "* Downloading saya $version (legacy)..."
 		curl "${curl_opts[@]}" -o "$filepath" -C - "$url" || fail "Could not download $url"
 
 		if [[ "$filename" == *.zip ]]; then
@@ -108,7 +137,7 @@ download_all_releases() {
 		fi
 
 		rm "$filepath"
-	done
+	fi
 }
 
 install_version() {
@@ -123,12 +152,18 @@ install_version() {
 	(
 		mkdir -p "$install_path"
 
-		for binary_name in "${!SAYA_BINARIES[@]}"; do
-			local install_name="${SAYA_BINARIES[$binary_name]}"
-			cp "$ASDF_DOWNLOAD_PATH/$binary_name" "$install_path/$install_name" \
-				|| fail "Could not find $binary_name in download path"
-			chmod +x "$install_path/$install_name"
-		done
+		if is_split_release "$version"; then
+			for binary_name in "${!SAYA_BINARIES[@]}"; do
+				local install_name="${SAYA_BINARIES[$binary_name]}"
+				cp "$ASDF_DOWNLOAD_PATH/$binary_name" "$install_path/$install_name" \
+					|| fail "Could not find $binary_name in download path"
+				chmod +x "$install_path/$install_name"
+			done
+		else
+			cp "$ASDF_DOWNLOAD_PATH/saya" "$install_path/saya" \
+				|| fail "Could not find saya binary in download path"
+			chmod +x "$install_path/saya"
+		fi
 
 		local tool_cmd
 		tool_cmd="$(echo "$TOOL_TEST" | cut -d' ' -f1)"
